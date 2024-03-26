@@ -5,6 +5,8 @@ from .models import Quantable, Vote, UserQuantablePreference
 from .enums import Category
 
 
+# quantable_app/serializers.py
+
 class QuantableSerializer(serializers.ModelSerializer):
     available_units = serializers.ListField(child=serializers.CharField())
     default_unit = serializers.CharField()

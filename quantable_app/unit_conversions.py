@@ -123,6 +123,9 @@ def convert_number(value, from_unit, to_unit):
 
 
 def convert_currency(value, from_unit, to_unit):
+    if value is None:
+        return None
+
     # Hardcoded conversion rates for development purposes
     conversion_rates = {
         CurrencyUnit.USD.value: 1.0,
@@ -140,10 +143,11 @@ def convert_currency(value, from_unit, to_unit):
     if from_unit not in conversion_rates or to_unit not in conversion_rates:
         raise ValueError(f"Unsupported currency units: {from_unit} to {to_unit}")
 
-    from_rate = conversion_rates[from_unit]
-    to_rate = conversion_rates[to_unit]
+    if from_unit == to_unit:
+        return value
 
-    converted_value = (value / from_rate) * to_rate
+    usd_value = value / conversion_rates[from_unit]
+    converted_value = usd_value * conversion_rates[to_unit]
     return converted_value
 
 

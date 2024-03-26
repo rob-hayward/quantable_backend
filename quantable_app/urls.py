@@ -4,7 +4,7 @@ from django.urls import path
 from .views import (
     CreateQuantableView, QuantableListView, QuantableDetailView,
     VoteCreateView, VoteRetrieveUpdateDestroyView, CategoryListView, UnitListView, UserQuantablePreferenceView,
-    ChartTestView
+    # ChartTestView
 )
 
 urlpatterns = [
@@ -16,5 +16,5 @@ urlpatterns = [
     path('categories/', CategoryListView.as_view(), name='category_list'),
     path('units/<str:category>/', UnitListView.as_view(), name='unit_list'),
     path('preferences/update/', UserQuantablePreferenceView.as_view(), name='update_preference'),
-    path('chart-test/', ChartTestView.as_view(), name='chart_test'),
+    # path('chart-test/', ChartTestView.as_view(), name='chart_test'),
 ]

@@ -16,49 +16,6 @@ import numpy as np
 from rest_framework.views import APIView
 from rest_framework.response import Response
 
-class ChartTestView(APIView):
-    def get(self, request):
-        # Generate sample vote data
-        np.random.seed(0)  # Set a fixed seed for reproducibility
-        num_votes = 1000
-        mean_vote = 50
-        std_dev = 15
-        vote_data = np.random.normal(mean_vote, std_dev, num_votes)
-
-        # Calculate Freedman-Diaconis bins
-        iqr = np.subtract(*np.percentile(vote_data, [75, 25]))
-        bin_width = 2 * iqr / (len(vote_data) ** (1/3))
-        num_bins = int(np.ceil((vote_data.max() - vote_data.min()) / bin_width))
-        bins = np.linspace(vote_data.min(), vote_data.max(), num_bins + 1)
-
-        # Calculate bin counts and percentages
-        bin_counts, _ = np.histogram(vote_data, bins=bins)
-        bin_percentages = bin_counts / len(vote_data) * 100
-
-        # Format the data for the BoxPlotWithDensity component
-        chart_data = {
-            'freedman_diaconis_bins': [
-                {
-                    'bin_min': bins[i],
-                    'bin_max': bins[i + 1],
-                    'count': int(bin_counts[i]),
-                    'percentage': bin_percentages[i]
-                }
-                for i in range(len(bins) - 1)
-            ],
-            'vote_average': np.mean(vote_data),
-            'vote_median': np.median(vote_data),
-            'vote_stddev': np.std(vote_data),
-            'vote_q1': np.percentile(vote_data, 25),
-            'vote_q3': np.percentile(vote_data, 75),
-            'vote_iqr': iqr,
-            'vote_min': np.min(vote_data),
-            'vote_max': np.max(vote_data),
-            'vote_skewness': 0  # Skewness is 0 for normally distributed data
-        }
-
-        return Response(chart_data)
-
 
 class UnitListView(generics.ListAPIView):
     serializer_class = CategorySerializer
@@ -105,6 +62,18 @@ class QuantableListView(generics.ListAPIView):
 
     def list(self, request, *args, **kwargs):
         queryset = self.get_queryset()
+
+        # Get the sorting option from the request query parameters
+        sort_option = request.query_params.get('sort', 'newest')
+
+        # Apply sorting based on the selected option
+        if sort_option == 'newest':
+            queryset = queryset.order_by('-created_at')
+        elif sort_option == 'oldest':
+            queryset = queryset.order_by('created_at')
+        elif sort_option == 'total_votes':
+            queryset = queryset.order_by('-vote_count')
+
         serializer = self.get_serializer(queryset, many=True)
         data = serializer.data
 
@@ -152,6 +121,13 @@ class QuantableDetailView(generics.RetrieveUpdateDestroyAPIView):
         if user.is_authenticated:
             preference, _ = UserQuantablePreference.objects.get_or_create(user=user, quantable=instance)
             preferred_unit = preference.preferred_unit
+            user_vote = Vote.objects.filter(user=user, quantable=instance).first()
+            if user_vote:
+                data['user_vote'] = user_vote.value
+                if preferred_unit and preferred_unit != instance.default_unit:
+                    conversion_function = UNIT_CONVERSION_FUNCTIONS.get(Category(instance.category))
+                    if conversion_function:
+                        data['user_vote'] = conversion_function(user_vote.value, instance.default_unit, preferred_unit)
         else:
             preferred_unit = instance.default_unit
 
@@ -170,8 +146,10 @@ class QuantableDetailView(generics.RetrieveUpdateDestroyAPIView):
                         if key == 'vote_values':
                             converted_data[key] = [conversion_function(vote, instance.default_unit, preferred_unit) for
                                                    vote in value]
-                        else:  # For other fields that may require conversion
+                        elif value is not None:  # Check if the value is not None before conversion
                             converted_data[key] = conversion_function(value, instance.default_unit, preferred_unit)
+                        else:
+                            converted_data[key] = value
                     else:
                         converted_data[key] = value
                 data = converted_data
@@ -265,3 +243,47 @@ class UserQuantablePreferenceView(generics.UpdateAPIView):
         preference.save()
 
         return Response({'detail': 'Preference updated successfully'})
+
+
+# class ChartTestView(APIView):
+#     def get(self, request):
+#         # Generate sample vote data
+#         np.random.seed(0)  # Set a fixed seed for reproducibility
+#         num_votes = 1000
+#         mean_vote = 50
+#         std_dev = 15
+#         vote_data = np.random.normal(mean_vote, std_dev, num_votes)
+#
+#         # Calculate Freedman-Diaconis bins
+#         iqr = np.subtract(*np.percentile(vote_data, [75, 25]))
+#         bin_width = 2 * iqr / (len(vote_data) ** (1/3))
+#         num_bins = int(np.ceil((vote_data.max() - vote_data.min()) / bin_width))
+#         bins = np.linspace(vote_data.min(), vote_data.max(), num_bins + 1)
+#
+#         # Calculate bin counts and percentages
+#         bin_counts, _ = np.histogram(vote_data, bins=bins)
+#         bin_percentages = bin_counts / len(vote_data) * 100
+#
+#         # Format the data for the BoxPlotWithDensity component
+#         chart_data = {
+#             'freedman_diaconis_bins': [
+#                 {
+#                     'bin_min': bins[i],
+#                     'bin_max': bins[i + 1],
+#                     'count': int(bin_counts[i]),
+#                     'percentage': bin_percentages[i]
+#                 }
+#                 for i in range(len(bins) - 1)
+#             ],
+#             'vote_average': np.mean(vote_data),
+#             'vote_median': np.median(vote_data),
+#             'vote_stddev': np.std(vote_data),
+#             'vote_q1': np.percentile(vote_data, 25),
+#             'vote_q3': np.percentile(vote_data, 75),
+#             'vote_iqr': iqr,
+#             'vote_min': np.min(vote_data),
+#             'vote_max': np.max(vote_data),
+#             'vote_skewness': 0  # Skewness is 0 for normally distributed data
+#         }
+#
+#         return Response(chart_data)
