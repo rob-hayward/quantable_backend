@@ -158,6 +158,17 @@ class QuantableDetailView(generics.RetrieveUpdateDestroyAPIView):
         data['available_units'] = [unit for unit in instance.available_units if unit != instance.default_unit]
         data['freedman_diaconis_bins'] = instance.freedman_diaconis_bins()
 
+        ninety_percent_range = instance.ninety_percent_vote_range()
+        if ninety_percent_range:
+            nmin, nmax = ninety_percent_range
+            data['ninety_percent_vote_range'] = {
+                'nmin': nmin,
+                'nmax': nmax,
+                'statement': f"90% of our community think that the correct answer is somewhere between {nmin:.2f} and {nmax:.2f} {preferred_unit or instance.default_unit}."
+            }
+        else:
+            data['ninety_percent_vote_range'] = None
+
         return Response(data)
 
 

@@ -112,6 +112,33 @@ class Quantable(models.Model):
 
         return bins
 
+    def ninety_percent_vote_range(self):
+        bins = self.freedman_diaconis_bins()
+        if not bins:
+            return None
+
+        total_votes = sum(bin['count'] for bin in bins)
+        cumulative_votes = 0
+        nmin = None
+        nmax = None
+
+        for bin in bins:
+            cumulative_votes += bin['count']
+            cumulative_percentage = cumulative_votes / total_votes * 100
+
+            if nmin is None and cumulative_percentage >= 5:
+                nmin = bin['bin_min']
+
+            if nmax is None and cumulative_percentage >= 95:
+                nmax = bin['bin_max']
+                break
+
+        if nmin is not None and nmax is not None:
+            return nmin, nmax
+
+        return None
+
+
 class Vote(models.Model):
     quantable = models.ForeignKey(Quantable, on_delete=models.CASCADE)
     user = models.ForeignKey(User, on_delete=models.CASCADE)
