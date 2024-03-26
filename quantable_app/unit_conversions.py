@@ -1,6 +1,8 @@
 # quantable_app/unit_conversions.py
 
-from .enums import Category, SizeUnit, VolumeUnit, WeightUnit, LengthUnit, AreaUnit, TemperatureUnit, TimeUnit, SpeedUnit
+from .enums import Category, SizeUnit, VolumeUnit, WeightUnit, LengthUnit, AreaUnit, TemperatureUnit, TimeUnit, \
+    SpeedUnit, NumberUnit, CurrencyUnit
+
 
 def convert_size(value, from_unit, to_unit):
     if from_unit == SizeUnit.CENTIMETER.value and to_unit == SizeUnit.METER.value:
@@ -106,6 +108,45 @@ def convert_speed(value, from_unit, to_unit):
     else:
         raise ValueError(f"Unsupported unit conversion: {from_unit} to {to_unit}")
 
+
+def convert_number(value, from_unit, to_unit):
+    if from_unit == NumberUnit.WHOLE.value and to_unit == NumberUnit.DECIMAL.value:
+        return float(value)
+    elif from_unit == NumberUnit.DECIMAL.value and to_unit == NumberUnit.WHOLE.value:
+        return int(value)
+    elif from_unit == NumberUnit.PERCENTAGE.value and to_unit == NumberUnit.DECIMAL.value:
+        return value / 100
+    elif from_unit == NumberUnit.DECIMAL.value and to_unit == NumberUnit.PERCENTAGE.value:
+        return value * 100
+    else:
+        raise ValueError(f"Unsupported unit conversion: {from_unit} to {to_unit}")
+
+
+def convert_currency(value, from_unit, to_unit):
+    # Hardcoded conversion rates for development purposes
+    conversion_rates = {
+        CurrencyUnit.USD.value: 1.0,
+        CurrencyUnit.EUR.value: 0.92,
+        CurrencyUnit.GBP.value: 0.81,
+        CurrencyUnit.JPY.value: 135.0,
+        CurrencyUnit.CAD.value: 1.32,
+        CurrencyUnit.AUD.value: 1.47,
+        CurrencyUnit.CHF.value: 0.96,
+        CurrencyUnit.CNY.value: 6.80,
+        CurrencyUnit.HKD.value: 7.75,
+        CurrencyUnit.SGD.value: 1.37,
+    }
+
+    if from_unit not in conversion_rates or to_unit not in conversion_rates:
+        raise ValueError(f"Unsupported currency units: {from_unit} to {to_unit}")
+
+    from_rate = conversion_rates[from_unit]
+    to_rate = conversion_rates[to_unit]
+
+    converted_value = (value / from_rate) * to_rate
+    return converted_value
+
+
 UNIT_CONVERSION_FUNCTIONS = {
     Category.SIZE: convert_size,
     Category.VOLUME: convert_volume,
@@ -115,4 +156,8 @@ UNIT_CONVERSION_FUNCTIONS = {
     Category.TEMPERATURE: convert_temperature,
     Category.TIME: convert_time,
     Category.SPEED: convert_speed,
+    Category.NUMBER: convert_number,
+    Category.CURRENCY: convert_currency,
 }
+
+

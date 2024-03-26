@@ -14,7 +14,8 @@ User = get_user_model()
 class Quantable(models.Model):
     question = models.TextField()
     category = models.CharField(max_length=20, choices=Category.choices())
-    unit = models.CharField(max_length=20)
+    available_units = models.JSONField(default=list)
+    default_unit = models.CharField(max_length=20)
     creator = models.ForeignKey(User, on_delete=models.CASCADE)
     creator_name = models.CharField(max_length=100, default='Unknown')
     created_at = models.DateTimeField(auto_now_add=True)
@@ -35,8 +36,17 @@ class Quantable(models.Model):
 
     def save(self, *args, **kwargs):
         unit_enum = CATEGORY_UNIT_MAPPING.get(Category(self.category))
-        if unit_enum and self.unit not in [unit.value for unit in unit_enum]:
-            raise ValueError(f"Invalid unit for the '{self.category}' category.")
+        if unit_enum:
+            valid_units = [unit.value for unit in unit_enum]
+            if self.default_unit not in valid_units:
+                raise ValueError(f"Invalid default unit for the '{self.category}' category.")
+            if not all(unit in valid_units for unit in self.available_units):
+                raise ValueError(f"Invalid available units for the '{self.category}' category.")
+
+        from authentech_app.models import UserProfile  # Import here to avoid circular import
+        user_profile = UserProfile.objects.filter(user=self.creator).first()
+        if user_profile:
+            self.creator_name = user_profile.preferred_name
         super().save(*args, **kwargs)
 
     def update_vote_data_markers(self):
@@ -69,6 +79,38 @@ class Quantable(models.Model):
             'count': entry['count']
         } for entry in vote_data]
 
+    def freedman_diaconis_bins(self):
+        votes = self.vote_set.values_list('value', flat=True)
+        vote_array = np.array(votes)
+
+        if len(vote_array) < 2:
+            return []
+
+        iqr = np.subtract(*np.percentile(vote_array, [75, 25]))
+        bin_width = 2 * iqr / (len(vote_array) ** (1 / 3))
+
+        if bin_width == 0:
+            return []
+
+        min_val = vote_array.min()
+        max_val = vote_array.max()
+        num_bins = int(np.ceil((max_val - min_val) / bin_width))
+
+        bins = []
+        for i in range(num_bins):
+            bin_min = min_val + i * bin_width
+            bin_max = bin_min + bin_width
+            bin_votes = vote_array[(vote_array >= bin_min) & (vote_array < bin_max)]
+            bin_count = len(bin_votes)
+            bin_percentage = bin_count / len(vote_array) * 100
+            bins.append({
+                'bin_min': bin_min,
+                'bin_max': bin_max,
+                'count': bin_count,
+                'percentage': bin_percentage
+            })
+
+        return bins
 
 class Vote(models.Model):
     quantable = models.ForeignKey(Quantable, on_delete=models.CASCADE)
@@ -86,3 +128,12 @@ class Vote(models.Model):
     def save(self, *args, **kwargs):
         super().save(*args, **kwargs)
         self.quantable.update_vote_data_markers()
+
+
+class UserQuantablePreference(models.Model):
+    user = models.ForeignKey(User, on_delete=models.CASCADE)
+    quantable = models.ForeignKey(Quantable, on_delete=models.CASCADE)
+    preferred_unit = models.CharField(max_length=20)
+
+    class Meta:
+        unique_together = ('user', 'quantable')

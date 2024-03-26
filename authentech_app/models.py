@@ -5,7 +5,6 @@ import uuid
 
 from django.db.models.signals import post_save
 from django.dispatch import receiver
-from quantable_app.models import Quantable, Vote
 
 
 class UserProfile(models.Model):
@@ -30,5 +29,6 @@ class WebAuthnCredential(models.Model):
 
 
 @receiver(post_save, sender=UserProfile)
-def update_creator_name(sender, instance, **kwargs):
+def update_votable_creator_name(sender, instance, **kwargs):
+    from quantable_app.models import Quantable  # Import here to avoid circular import
     Quantable.objects.filter(creator=instance.user).update(creator_name=instance.preferred_name)
