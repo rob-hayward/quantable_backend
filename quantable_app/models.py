@@ -18,6 +18,8 @@ class Quantable(models.Model):
     default_unit = models.CharField(max_length=20)
     creator = models.ForeignKey(User, on_delete=models.CASCADE)
     creator_name = models.CharField(max_length=100, default='Unknown')
+    pair_id = models.CharField(max_length=100, null=True, blank=True)
+    is_min = models.BooleanField(default=False)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
     vote_count = models.IntegerField(default=0)

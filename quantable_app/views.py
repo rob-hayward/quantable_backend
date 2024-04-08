@@ -1,13 +1,14 @@
 # quantable_app/views.py
 
-from rest_framework import generics, permissions, request
+from rest_framework import generics, permissions, request, status
 from rest_framework.response import Response
-from rest_framework.exceptions import ValidationError
+from rest_framework.exceptions import ValidationError, NotFound
 from rest_framework.views import APIView
 
 from . import serializers
 from .models import Quantable, Vote, UserQuantablePreference
-from .serializers import QuantableSerializer, VoteSerializer, CategorySerializer, UserQuantablePreferenceSerializer
+from .serializers import QuantableSerializer, VoteSerializer, CategorySerializer, UserQuantablePreferenceSerializer, \
+    QuantablePairSerializer
 from .enums import Category, CATEGORY_UNIT_MAPPING
 from .unit_conversions import UNIT_CONVERSION_FUNCTIONS
 
@@ -37,22 +38,50 @@ class CreateQuantableView(generics.CreateAPIView):
     serializer_class = QuantableSerializer
     permission_classes = [permissions.IsAuthenticated]
 
-    def perform_create(self, serializer):
-        category = serializer.validated_data['category']
-        available_units = serializer.validated_data['available_units']
-        default_unit = serializer.validated_data['default_unit']
+    def create(self, request, *args, **kwargs):
+        quantable_data = request.data
         creator = self.request.user
         creator_name = self.request.session.get('preferred_name', 'Unknown')
 
-        unit_enum = CATEGORY_UNIT_MAPPING.get(Category(category))
-        if unit_enum:
-            valid_units = [unit.value for unit in unit_enum]
-            if default_unit not in valid_units:
-                raise serializers.ValidationError("Invalid default unit for the chosen category.")
-            if not all(unit in valid_units for unit in available_units):
-                raise serializers.ValidationError("Invalid available units for the chosen category.")
+        if 'pair_id' in quantable_data:
+            # Create a quantable pair
+            pair_id = quantable_data['pair_id']
+            min_quantable_data = quantable_data['min_quantable']
+            max_quantable_data = quantable_data['max_quantable']
 
-        serializer.save(creator=creator, creator_name=creator_name)
+            min_quantable_serializer = self.get_serializer(data=min_quantable_data)
+            min_quantable_serializer.is_valid(raise_exception=True)
+            min_quantable = min_quantable_serializer.save(
+                creator=creator,
+                creator_name=creator_name,
+                pair_id=pair_id,
+                is_min=True
+            )
+
+            max_quantable_serializer = self.get_serializer(data=max_quantable_data)
+            max_quantable_serializer.is_valid(raise_exception=True)
+            max_quantable = max_quantable_serializer.save(
+                creator=creator,
+                creator_name=creator_name,
+                pair_id=pair_id,
+                is_min=False
+            )
+
+            response_data = {
+                'pair_id': pair_id,
+                'min_quantable': min_quantable_serializer.data,
+                'max_quantable': max_quantable_serializer.data,
+            }
+            return Response(response_data, status=status.HTTP_201_CREATED)
+        else:
+            # Create a single quantable
+            serializer = self.get_serializer(data=quantable_data)
+            serializer.is_valid(raise_exception=True)
+            quantable = serializer.save(
+                creator=creator,
+                creator_name=creator_name
+            )
+            return Response(serializer.data, status=status.HTTP_201_CREATED)
 
 
 class QuantableListView(generics.ListAPIView):
@@ -170,6 +199,89 @@ class QuantableDetailView(generics.RetrieveUpdateDestroyAPIView):
             data['ninety_percent_vote_range'] = None
 
         return Response(data)
+
+
+class QuantablePairDetailView(generics.RetrieveAPIView):
+    serializer_class = QuantablePairSerializer
+    permission_classes = [permissions.IsAuthenticatedOrReadOnly]
+
+    def get_object(self):
+        pair_id = self.kwargs['pair_id']
+        print(f"QuantablePairDetailView - get_object - Pair ID: {pair_id}")
+        pair_quantables = Quantable.objects.filter(pair_id=pair_id)
+        print(f"QuantablePairDetailView - get_object - Pair Quantables: {pair_quantables}")
+        if pair_quantables.count() != 2:
+            raise NotFound("Quantable pair not found.")
+        return pair_quantables
+
+    def retrieve(self, request, *args, **kwargs):
+        pair_quantables = self.get_object()
+        print(f"QuantablePairDetailView - retrieve - Pair Quantables: {pair_quantables}")
+        min_quantable = pair_quantables.filter(is_min=True).first()
+        max_quantable = pair_quantables.filter(is_min=False).first()
+
+        preferred_unit = request.query_params.get('preferred_unit')
+        print(f"QuantablePairDetailView - retrieve - Preferred Unit: {preferred_unit}")
+
+        if preferred_unit:
+            min_quantable_data = self.apply_unit_conversion(min_quantable, preferred_unit)
+            max_quantable_data = self.apply_unit_conversion(max_quantable, preferred_unit)
+            print(f"QuantablePairDetailView - retrieve - Min Quantable Data (converted): {min_quantable_data}")
+            print(f"QuantablePairDetailView - retrieve - Max Quantable Data (converted): {max_quantable_data}")
+        else:
+            min_quantable_data = QuantableSerializer(min_quantable).data
+            max_quantable_data = QuantableSerializer(max_quantable).data
+            print(f"QuantablePairDetailView - retrieve - Min Quantable Data: {min_quantable_data}")
+            print(f"QuantablePairDetailView - retrieve - Max Quantable Data: {max_quantable_data}")
+
+        user = request.user
+        print(f"QuantablePairDetailView - retrieve - User: {user}")
+        min_user_vote = min_quantable.vote_set.filter(user=user).first()
+        max_user_vote = max_quantable.vote_set.filter(user=user).first()
+        print(f"QuantablePairDetailView - retrieve - Min User Vote: {min_user_vote}")
+        print(f"QuantablePairDetailView - retrieve - Max User Vote: {max_user_vote}")
+
+        if min_user_vote:
+            min_quantable_data['user_vote'] = min_user_vote.value
+        else:
+            min_quantable_data['user_vote'] = None
+
+        if max_user_vote:
+            max_quantable_data['user_vote'] = max_user_vote.value
+        else:
+            max_quantable_data['user_vote'] = None
+
+        serializer = self.get_serializer({
+            'min_quantable': min_quantable_data,
+            'max_quantable': max_quantable_data
+        })
+        print(f"QuantablePairDetailView - retrieve - Serializer Data: {serializer.data}")
+        return Response(serializer.data)
+
+    def apply_unit_conversion(self, quantable, preferred_unit):
+        quantable_data = QuantableSerializer(quantable).data
+
+        if preferred_unit and preferred_unit != quantable.default_unit:
+            conversion_function = UNIT_CONVERSION_FUNCTIONS.get(Category(quantable.category))
+            if conversion_function:
+                fields_for_conversion = [
+                    'vote_average', 'vote_median', 'vote_stddev',
+                    'vote_q1', 'vote_q3', 'vote_iqr', 'vote_min', 'vote_max'
+                ]
+
+                converted_data = {}
+                for key, value in quantable_data.items():
+                    if key in fields_for_conversion:
+                        if value is not None:
+                            converted_data[key] = conversion_function(value, quantable.default_unit, preferred_unit)
+                        else:
+                            converted_data[key] = value
+                    else:
+                        converted_data[key] = value
+
+                return converted_data
+
+        return quantable_data
 
 
 class VoteCreateView(generics.CreateAPIView):
