@@ -106,6 +106,9 @@ class QuantableListView(generics.ListAPIView):
         serializer = self.get_serializer(queryset, many=True)
         data = serializer.data
 
+        quantable_pairs = {}
+        individual_quantables = []
+
         for quantable_data in data:
             quantable = Quantable.objects.get(id=quantable_data['id'])
             user = request.user
@@ -133,7 +136,34 @@ class QuantableListView(generics.ListAPIView):
                         if value is not None:
                             quantable_data[key] = conversion_function(value, quantable.default_unit, preferred_unit)
 
-        return Response(data)
+            if quantable_data['pair_id']:
+                pair_id = quantable_data['pair_id']
+                if pair_id not in quantable_pairs:
+                    quantable_pairs[pair_id] = {'min_quantable': None, 'max_quantable': None}
+                if quantable_data['is_min']:
+                    quantable_pairs[pair_id]['min_quantable'] = quantable_data
+                else:
+                    quantable_pairs[pair_id]['max_quantable'] = quantable_data
+            else:
+                individual_quantables.append(quantable_data)
+
+        # Prepare the response data
+        response_data = []
+
+        for pair_id, pair_data in quantable_pairs.items():
+            min_quantable = pair_data['min_quantable']
+            max_quantable = pair_data['max_quantable']
+            if min_quantable and max_quantable:
+                response_data.append({
+                    'pair_id': pair_id,
+                    'min_quantable': min_quantable,
+                    'max_quantable': max_quantable,
+                    'type': 'pair'
+                })
+
+        response_data.extend(individual_quantables)
+
+        return Response(response_data)
 
 
 class QuantableDetailView(generics.RetrieveUpdateDestroyAPIView):
@@ -216,30 +246,17 @@ class QuantablePairDetailView(generics.RetrieveAPIView):
 
     def retrieve(self, request, *args, **kwargs):
         pair_quantables = self.get_object()
-        print(f"QuantablePairDetailView - retrieve - Pair Quantables: {pair_quantables}")
         min_quantable = pair_quantables.filter(is_min=True).first()
         max_quantable = pair_quantables.filter(is_min=False).first()
 
         preferred_unit = request.query_params.get('preferred_unit')
-        print(f"QuantablePairDetailView - retrieve - Preferred Unit: {preferred_unit}")
 
-        if preferred_unit:
-            min_quantable_data = self.apply_unit_conversion(min_quantable, preferred_unit)
-            max_quantable_data = self.apply_unit_conversion(max_quantable, preferred_unit)
-            print(f"QuantablePairDetailView - retrieve - Min Quantable Data (converted): {min_quantable_data}")
-            print(f"QuantablePairDetailView - retrieve - Max Quantable Data (converted): {max_quantable_data}")
-        else:
-            min_quantable_data = QuantableSerializer(min_quantable).data
-            max_quantable_data = QuantableSerializer(max_quantable).data
-            print(f"QuantablePairDetailView - retrieve - Min Quantable Data: {min_quantable_data}")
-            print(f"QuantablePairDetailView - retrieve - Max Quantable Data: {max_quantable_data}")
+        min_quantable_data = self.apply_unit_conversion(min_quantable, preferred_unit)
+        max_quantable_data = self.apply_unit_conversion(max_quantable, preferred_unit)
 
         user = request.user
-        print(f"QuantablePairDetailView - retrieve - User: {user}")
         min_user_vote = min_quantable.vote_set.filter(user=user).first()
         max_user_vote = max_quantable.vote_set.filter(user=user).first()
-        print(f"QuantablePairDetailView - retrieve - Min User Vote: {min_user_vote}")
-        print(f"QuantablePairDetailView - retrieve - Max User Vote: {max_user_vote}")
 
         if min_user_vote:
             min_quantable_data['user_vote'] = min_user_vote.value
@@ -255,11 +272,12 @@ class QuantablePairDetailView(generics.RetrieveAPIView):
             'min_quantable': min_quantable_data,
             'max_quantable': max_quantable_data
         })
-        print(f"QuantablePairDetailView - retrieve - Serializer Data: {serializer.data}")
+
         return Response(serializer.data)
 
     def apply_unit_conversion(self, quantable, preferred_unit):
         quantable_data = QuantableSerializer(quantable).data
+        quantable_data['freedman_diaconis_bins'] = quantable.freedman_diaconis_bins()
 
         if preferred_unit and preferred_unit != quantable.default_unit:
             conversion_function = UNIT_CONVERSION_FUNCTIONS.get(Category(quantable.category))
@@ -269,17 +287,10 @@ class QuantablePairDetailView(generics.RetrieveAPIView):
                     'vote_q1', 'vote_q3', 'vote_iqr', 'vote_min', 'vote_max'
                 ]
 
-                converted_data = {}
-                for key, value in quantable_data.items():
-                    if key in fields_for_conversion:
-                        if value is not None:
-                            converted_data[key] = conversion_function(value, quantable.default_unit, preferred_unit)
-                        else:
-                            converted_data[key] = value
-                    else:
-                        converted_data[key] = value
-
-                return converted_data
+                for key in fields_for_conversion:
+                    value = quantable_data.get(key)
+                    if value is not None:
+                        quantable_data[key] = conversion_function(value, quantable.default_unit, preferred_unit)
 
         return quantable_data
 
@@ -366,47 +377,3 @@ class UserQuantablePreferenceView(generics.UpdateAPIView):
         preference.save()
 
         return Response({'detail': 'Preference updated successfully'})
-
-
-# class ChartTestView(APIView):
-#     def get(self, request):
-#         # Generate sample vote data
-#         np.random.seed(0)  # Set a fixed seed for reproducibility
-#         num_votes = 1000
-#         mean_vote = 50
-#         std_dev = 15
-#         vote_data = np.random.normal(mean_vote, std_dev, num_votes)
-#
-#         # Calculate Freedman-Diaconis bins
-#         iqr = np.subtract(*np.percentile(vote_data, [75, 25]))
-#         bin_width = 2 * iqr / (len(vote_data) ** (1/3))
-#         num_bins = int(np.ceil((vote_data.max() - vote_data.min()) / bin_width))
-#         bins = np.linspace(vote_data.min(), vote_data.max(), num_bins + 1)
-#
-#         # Calculate bin counts and percentages
-#         bin_counts, _ = np.histogram(vote_data, bins=bins)
-#         bin_percentages = bin_counts / len(vote_data) * 100
-#
-#         # Format the data for the BoxPlotWithDensity component
-#         chart_data = {
-#             'freedman_diaconis_bins': [
-#                 {
-#                     'bin_min': bins[i],
-#                     'bin_max': bins[i + 1],
-#                     'count': int(bin_counts[i]),
-#                     'percentage': bin_percentages[i]
-#                 }
-#                 for i in range(len(bins) - 1)
-#             ],
-#             'vote_average': np.mean(vote_data),
-#             'vote_median': np.median(vote_data),
-#             'vote_stddev': np.std(vote_data),
-#             'vote_q1': np.percentile(vote_data, 25),
-#             'vote_q3': np.percentile(vote_data, 75),
-#             'vote_iqr': iqr,
-#             'vote_min': np.min(vote_data),
-#             'vote_max': np.max(vote_data),
-#             'vote_skewness': 0  # Skewness is 0 for normally distributed data
-#         }
-#
-#         return Response(chart_data)
