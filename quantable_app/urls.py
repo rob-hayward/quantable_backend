@@ -5,7 +5,6 @@ from .views import (
     CreateQuantableView, QuantableListView, QuantableDetailView,
     VoteCreateView, VoteRetrieveUpdateDestroyView, CategoryListView, UnitListView, UserQuantablePreferenceView,
     QuantablePairDetailView,
-    # ChartTestView
 )
 
 urlpatterns = [
@@ -18,5 +17,4 @@ urlpatterns = [
     path('units/<str:category>/', UnitListView.as_view(), name='unit_list'),
     path('preferences/update/', UserQuantablePreferenceView.as_view(), name='update_preference'),
     path('quantable-pairs/<str:pair_id>/', QuantablePairDetailView.as_view(), name='quantable_pair_detail'),
-    # path('chart-test/', ChartTestView.as_view(), name='chart_test'),
 ]

@@ -31,8 +31,6 @@ class QuantableSerializer(serializers.ModelSerializer):
     def to_representation(self, instance):
         representation = super().to_representation(instance)
         representation['creator'] = instance.creator.id
-        print(f"QuantableSerializer - to_representation - Instance: {instance}")
-        print(f"QuantableSerializer - to_representation - Representation: {representation}")
         return representation
 
 
@@ -41,7 +39,6 @@ class QuantablePairSerializer(serializers.Serializer):
     max_quantable = QuantableSerializer()
 
     def to_representation(self, instance):
-        print(f"QuantablePairSerializer - to_representation - Instance: {instance}")
         min_quantable_data = instance['min_quantable']
         max_quantable_data = instance['max_quantable']
 
@@ -49,7 +46,6 @@ class QuantablePairSerializer(serializers.Serializer):
             'min_quantable': min_quantable_data,
             'max_quantable': max_quantable_data,
         }
-        print(f"QuantablePairSerializer - to_representation - Representation: {representation}")
         return representation
 
 

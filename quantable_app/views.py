@@ -237,9 +237,7 @@ class QuantablePairDetailView(generics.RetrieveAPIView):
 
     def get_object(self):
         pair_id = self.kwargs['pair_id']
-        print(f"QuantablePairDetailView - get_object - Pair ID: {pair_id}")
         pair_quantables = Quantable.objects.filter(pair_id=pair_id)
-        print(f"QuantablePairDetailView - get_object - Pair Quantables: {pair_quantables}")
         if pair_quantables.count() != 2:
             raise NotFound("Quantable pair not found.")
         return pair_quantables

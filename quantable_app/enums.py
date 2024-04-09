@@ -2,6 +2,7 @@
 
 from enum import Enum
 
+
 class Category(Enum):
     SIZE = 'size'
     VOLUME = 'volume'
@@ -18,6 +19,7 @@ class Category(Enum):
     def choices(cls):
         return [(key.value, key.name) for key in cls]
 
+
 class SizeUnit(Enum):
     CENTIMETER = 'cm'
     METER = 'm'
@@ -29,6 +31,7 @@ class SizeUnit(Enum):
     @classmethod
     def choices(cls):
         return [(key.value, key.name) for key in cls]
+
 
 class VolumeUnit(Enum):
     MILLILITER = 'ml'
@@ -47,6 +50,7 @@ class VolumeUnit(Enum):
     def choices(cls):
         return [(key.value, key.name) for key in cls]
 
+
 class WeightUnit(Enum):
     MILLIGRAM = 'mg'
     GRAM = 'g'
@@ -58,6 +62,7 @@ class WeightUnit(Enum):
     @classmethod
     def choices(cls):
         return [(key.value, key.name) for key in cls]
+
 
 class CurrencyUnit(Enum):
     USD = 'USD'
@@ -75,6 +80,7 @@ class CurrencyUnit(Enum):
     def choices(cls):
         return [(key.value, key.name) for key in cls]
 
+
 class LengthUnit(Enum):
     MILLIMETER = 'mm'
     CENTIMETER = 'cm'
@@ -88,6 +94,7 @@ class LengthUnit(Enum):
     @classmethod
     def choices(cls):
         return [(key.value, key.name) for key in cls]
+
 
 class AreaUnit(Enum):
     SQUARE_MILLIMETER = 'mm²'
@@ -105,6 +112,7 @@ class AreaUnit(Enum):
     def choices(cls):
         return [(key.value, key.name) for key in cls]
 
+
 class TemperatureUnit(Enum):
     CELSIUS = '°C'
     FAHRENHEIT = '°F'
@@ -113,6 +121,7 @@ class TemperatureUnit(Enum):
     @classmethod
     def choices(cls):
         return [(key.value, key.name) for key in cls]
+
 
 class TimeUnit(Enum):
     MILLISECOND = 'ms'
@@ -128,6 +137,7 @@ class TimeUnit(Enum):
     def choices(cls):
         return [(key.value, key.name) for key in cls]
 
+
 class SpeedUnit(Enum):
     METERS_PER_SECOND = 'm/s'
     KILOMETERS_PER_HOUR = 'km/h'
@@ -137,6 +147,7 @@ class SpeedUnit(Enum):
     @classmethod
     def choices(cls):
         return [(key.value, key.name) for key in cls]
+
 
 class NumberUnit(Enum):
     WHOLE = 'whole'
