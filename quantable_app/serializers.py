@@ -3,6 +3,7 @@
 from rest_framework import serializers
 from .models import Quantable, Vote, UserQuantablePreference
 from django.contrib.auth import get_user_model
+import math
 from .enums import Category
 
 User = get_user_model()
@@ -30,7 +31,9 @@ class QuantableSerializer(serializers.ModelSerializer):
 
     def to_representation(self, instance):
         representation = super().to_representation(instance)
-        representation['creator'] = instance.creator.id
+        for key, value in representation.items():
+            if isinstance(value, float) and math.isnan(value):
+                representation[key] = None
         return representation
 
 

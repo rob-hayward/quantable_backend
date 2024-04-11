@@ -90,80 +90,86 @@ class QuantableListView(generics.ListAPIView):
     permission_classes = [permissions.AllowAny]
 
     def list(self, request, *args, **kwargs):
-        queryset = self.get_queryset()
+        try:
+            queryset = self.get_queryset()
 
-        # Get the sorting option from the request query parameters
-        sort_option = request.query_params.get('sort', 'newest')
 
-        # Apply sorting based on the selected option
-        if sort_option == 'newest':
-            queryset = queryset.order_by('-created_at')
-        elif sort_option == 'oldest':
-            queryset = queryset.order_by('created_at')
-        elif sort_option == 'total_votes':
-            queryset = queryset.order_by('-vote_count')
+            # Get the sorting option from the request query parameters
+            sort_option = request.query_params.get('sort', 'newest')
 
-        serializer = self.get_serializer(queryset, many=True)
-        data = serializer.data
+            # Apply sorting based on the selected option
+            if sort_option == 'newest':
+                queryset = queryset.order_by('-created_at')
+            elif sort_option == 'oldest':
+                queryset = queryset.order_by('created_at')
+            elif sort_option == 'total_votes':
+                queryset = queryset.order_by('-vote_count')
 
-        quantable_pairs = {}
-        individual_quantables = []
+            serializer = self.get_serializer(queryset, many=True)
+            data = serializer.data
 
-        for quantable_data in data:
-            quantable = Quantable.objects.get(id=quantable_data['id'])
-            user = request.user
+            quantable_pairs = {}
+            individual_quantables = []
 
-            if user.is_authenticated:
-                preference, _ = UserQuantablePreference.objects.get_or_create(user=user, quantable=quantable)
-                preferred_unit = preference.preferred_unit
-            else:
-                preferred_unit = quantable.default_unit
+            for quantable_data in data:
+                quantable = Quantable.objects.get(id=quantable_data['id'])
+                user = request.user
 
-            quantable_data['preferred_unit'] = preferred_unit or quantable.default_unit
-            quantable_data['freedman_diaconis_bins'] = quantable.freedman_diaconis_bins()
-
-            # Identify fields that should undergo unit conversion
-            fields_for_conversion = [
-                'vote_average', 'vote_median', 'vote_stddev',
-                'vote_q1', 'vote_q3', 'vote_iqr', 'vote_min', 'vote_max'
-            ]
-
-            if preferred_unit and preferred_unit != quantable.default_unit:
-                conversion_function = UNIT_CONVERSION_FUNCTIONS.get(Category(quantable.category))
-                if conversion_function:
-                    for key in fields_for_conversion:
-                        value = quantable_data.get(key)
-                        if value is not None:
-                            quantable_data[key] = conversion_function(value, quantable.default_unit, preferred_unit)
-
-            if quantable_data['pair_id']:
-                pair_id = quantable_data['pair_id']
-                if pair_id not in quantable_pairs:
-                    quantable_pairs[pair_id] = {'min_quantable': None, 'max_quantable': None}
-                if quantable_data['is_min']:
-                    quantable_pairs[pair_id]['min_quantable'] = quantable_data
+                if user.is_authenticated:
+                    preference, _ = UserQuantablePreference.objects.get_or_create(user=user, quantable=quantable)
+                    preferred_unit = preference.preferred_unit
                 else:
-                    quantable_pairs[pair_id]['max_quantable'] = quantable_data
-            else:
-                individual_quantables.append(quantable_data)
+                    preferred_unit = quantable.default_unit
 
-        # Prepare the response data
-        response_data = []
+                quantable_data['preferred_unit'] = preferred_unit or quantable.default_unit
+                quantable_data['freedman_diaconis_bins'] = quantable.freedman_diaconis_bins()
 
-        for pair_id, pair_data in quantable_pairs.items():
-            min_quantable = pair_data['min_quantable']
-            max_quantable = pair_data['max_quantable']
-            if min_quantable and max_quantable:
-                response_data.append({
-                    'pair_id': pair_id,
-                    'min_quantable': min_quantable,
-                    'max_quantable': max_quantable,
-                    'type': 'pair'
-                })
+                # Identify fields that should undergo unit conversion
+                fields_for_conversion = [
+                    'vote_average', 'vote_median', 'vote_stddev',
+                    'vote_q1', 'vote_q3', 'vote_iqr', 'vote_min', 'vote_max'
+                ]
 
-        response_data.extend(individual_quantables)
+                if preferred_unit and preferred_unit != quantable.default_unit:
+                    conversion_function = UNIT_CONVERSION_FUNCTIONS.get(Category(quantable.category))
+                    if conversion_function:
+                        for key in fields_for_conversion:
+                            value = quantable_data.get(key)
+                            if value is not None:
+                                quantable_data[key] = conversion_function(value, quantable.default_unit, preferred_unit)
 
-        return Response(response_data)
+                if quantable_data['pair_id']:
+                    pair_id = quantable_data['pair_id']
+                    if pair_id not in quantable_pairs:
+                        quantable_pairs[pair_id] = {'min_quantable': None, 'max_quantable': None}
+                    if quantable_data['is_min']:
+                        quantable_pairs[pair_id]['min_quantable'] = quantable_data
+                    else:
+                        quantable_pairs[pair_id]['max_quantable'] = quantable_data
+                else:
+                    individual_quantables.append(quantable_data)
+
+            # Prepare the response data
+            response_data = []
+
+            for pair_id, pair_data in quantable_pairs.items():
+                min_quantable = pair_data['min_quantable']
+                max_quantable = pair_data['max_quantable']
+                if min_quantable and max_quantable:
+                    response_data.append({
+                        'pair_id': pair_id,
+                        'min_quantable': min_quantable,
+                        'max_quantable': max_quantable,
+                        'type': 'pair'
+                    })
+
+            response_data.extend(individual_quantables)
+
+            return Response(response_data)
+        except ValueError as e:
+            # Handle the ValueError exception
+            error_message = str(e)
+            return Response({'error': error_message}, status=status.HTTP_400_BAD_REQUEST)
 
 
 class QuantableDetailView(generics.RetrieveUpdateDestroyAPIView):
@@ -248,11 +254,21 @@ class QuantablePairDetailView(generics.RetrieveAPIView):
         max_quantable = pair_quantables.filter(is_min=False).first()
 
         preferred_unit = request.query_params.get('preferred_unit')
-
-        min_quantable_data = self.apply_unit_conversion(min_quantable, preferred_unit)
-        max_quantable_data = self.apply_unit_conversion(max_quantable, preferred_unit)
+        print(f"Preferred unit from request: {preferred_unit}")
 
         user = request.user
+        if user.is_authenticated:
+            min_preference, _ = UserQuantablePreference.objects.get_or_create(user=user, quantable=min_quantable)
+            min_preference.preferred_unit = preferred_unit
+            min_preference.save()
+
+            max_preference, _ = UserQuantablePreference.objects.get_or_create(user=user, quantable=max_quantable)
+            max_preference.preferred_unit = preferred_unit
+            max_preference.save()
+
+        min_quantable_data = QuantableSerializer(min_quantable).data
+        max_quantable_data = QuantableSerializer(max_quantable).data
+
         min_user_vote = min_quantable.vote_set.filter(user=user).first()
         max_user_vote = max_quantable.vote_set.filter(user=user).first()
 
@@ -266,31 +282,48 @@ class QuantablePairDetailView(generics.RetrieveAPIView):
         else:
             max_quantable_data['user_vote'] = None
 
+        min_quantable_data['freedman_diaconis_bins'] = min_quantable.freedman_diaconis_bins()
+        max_quantable_data['freedman_diaconis_bins'] = max_quantable.freedman_diaconis_bins()
+
+        if preferred_unit and preferred_unit != min_quantable.default_unit:
+            conversion_function = UNIT_CONVERSION_FUNCTIONS.get(Category(min_quantable.category))
+            if conversion_function:
+                self.apply_unit_conversion(min_quantable_data, conversion_function, min_quantable.default_unit, preferred_unit)
+                self.apply_unit_conversion(max_quantable_data, conversion_function, max_quantable.default_unit, preferred_unit)
+
+        min_quantable_data['preferred_unit'] = preferred_unit or min_quantable.default_unit
+        max_quantable_data['preferred_unit'] = preferred_unit or max_quantable.default_unit
+
         serializer = self.get_serializer({
             'min_quantable': min_quantable_data,
             'max_quantable': max_quantable_data
         })
 
+        print(f"Response data: {serializer.data}")
+
         return Response(serializer.data)
 
-    def apply_unit_conversion(self, quantable, preferred_unit):
-        quantable_data = QuantableSerializer(quantable).data
-        quantable_data['freedman_diaconis_bins'] = quantable.freedman_diaconis_bins()
+    def apply_unit_conversion(self, quantable_data, conversion_function, default_unit, preferred_unit):
+        fields_for_conversion = [
+            'vote_average', 'vote_median', 'vote_stddev',
+            'vote_q1', 'vote_q3', 'vote_iqr', 'vote_min', 'vote_max'
+        ]
 
-        if preferred_unit and preferred_unit != quantable.default_unit:
-            conversion_function = UNIT_CONVERSION_FUNCTIONS.get(Category(quantable.category))
-            if conversion_function:
-                fields_for_conversion = [
-                    'vote_average', 'vote_median', 'vote_stddev',
-                    'vote_q1', 'vote_q3', 'vote_iqr', 'vote_min', 'vote_max'
-                ]
+        for key in fields_for_conversion:
+            value = quantable_data.get(key)
+            if value is not None:
+                converted_value = conversion_function(value, default_unit, preferred_unit)
+                quantable_data[key] = round(converted_value, 2)  # Round to 2 decimal places
 
-                for key in fields_for_conversion:
-                    value = quantable_data.get(key)
-                    if value is not None:
-                        quantable_data[key] = conversion_function(value, quantable.default_unit, preferred_unit)
+        if 'user_vote' in quantable_data and quantable_data['user_vote'] is not None:
+            converted_user_vote = conversion_function(quantable_data['user_vote'], default_unit, preferred_unit)
+            quantable_data['user_vote'] = round(converted_user_vote, 2)  # Round to 2 decimal places
 
-        return quantable_data
+        for bin_data in quantable_data['freedman_diaconis_bins']:
+            bin_min = conversion_function(bin_data['bin_min'], default_unit, preferred_unit)
+            bin_max = conversion_function(bin_data['bin_max'], default_unit, preferred_unit)
+            bin_data['bin_min'] = round(bin_min, 2)  # Round to 2 decimal places
+            bin_data['bin_max'] = round(bin_max, 2)  # Round to 2 decimal places
 
 
 class VoteCreateView(generics.CreateAPIView):

@@ -27,3 +27,5 @@ urllib3==2.1.0
 webauthn==1.11.1
 
 scipy~=1.12.0
+numpy~=1.26.4
+python-dotenv~=1.0.1
