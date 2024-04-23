@@ -253,6 +253,9 @@ class QuantablePairDetailView(generics.RetrieveAPIView):
         min_quantable = pair_quantables.filter(is_min=True).first()
         max_quantable = pair_quantables.filter(is_min=False).first()
 
+        if min_quantable is None or max_quantable is None:
+            return Response({'detail': 'Quantable pair not found.'}, status=status.HTTP_404_NOT_FOUND)
+
         preferred_unit = request.query_params.get('preferred_unit')
         print(f"Preferred unit from request: {preferred_unit}")
 
